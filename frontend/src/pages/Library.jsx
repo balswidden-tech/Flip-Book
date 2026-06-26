@@ -177,42 +177,50 @@ export default function Library() {
           </span>
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[...Array(4)].map((_, i) => (
+        {(() => {
+          if (loading) {
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+                {["s1", "s2", "s3", "s4"].map((k) => (
+                  <div
+                    key={k}
+                    className="aspect-[3/4] bg-[#FAF9F6] border border-[#D1CEC7] animate-pulse"
+                  />
+                ))}
+              </div>
+            );
+          }
+          if (books.length === 0) {
+            return (
               <div
-                key={i}
-                className="aspect-[3/4] bg-[#FAF9F6] border border-[#D1CEC7] animate-pulse"
-              />
-            ))}
-          </div>
-        ) : books.length === 0 ? (
-          <div
-            data-testid="empty-state"
-            className="border-2 border-dashed border-[#D1CEC7] bg-[#FAF9F6] py-24 flex flex-col items-center justify-center text-center"
-          >
-            <BookOpen strokeWidth={1.2} className="w-12 h-12 text-[#C34A36] mb-5" />
-            <h3 className="font-serif-display text-3xl tracking-tight text-[#0F0F0F]">
-              No flipbooks yet
-            </h3>
-            <p className="text-[#5C5A56] mt-2 mb-7 max-w-sm">
-              Create your first volume and breathe life into your documents.
-            </p>
-            <button
-              data-testid="empty-new-book-button"
-              onClick={() => setOpen(true)}
-              className={btnPrimary}
-            >
-              <Plus strokeWidth={2} className="w-4 h-4" /> Create Flipbook
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
-            {books.map((b) => (
-              <BookCard key={b.id} book={b} onDelete={setToDelete} />
-            ))}
-          </div>
-        )}
+                data-testid="empty-state"
+                className="border-2 border-dashed border-[#D1CEC7] bg-[#FAF9F6] py-24 flex flex-col items-center justify-center text-center"
+              >
+                <BookOpen strokeWidth={1.2} className="w-12 h-12 text-[#C34A36] mb-5" />
+                <h3 className="font-serif-display text-3xl tracking-tight text-[#0F0F0F]">
+                  No flipbooks yet
+                </h3>
+                <p className="text-[#5C5A56] mt-2 mb-7 max-w-sm">
+                  Create your first volume and breathe life into your documents.
+                </p>
+                <button
+                  data-testid="empty-new-book-button"
+                  onClick={() => setOpen(true)}
+                  className={btnPrimary}
+                >
+                  <Plus strokeWidth={2} className="w-4 h-4" /> Create Flipbook
+                </button>
+              </div>
+            );
+          }
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10">
+              {books.map((b) => (
+                <BookCard key={b.id} book={b} onDelete={setToDelete} />
+              ))}
+            </div>
+          );
+        })()}
       </section>
 
       {/* Create dialog */}
