@@ -32,6 +32,10 @@ An app to turn a collection of documents or images into a flip book.
 - Auto-adjust flipbook page size/orientation: pages store width/height; reader frame matches content aspect ratio (landscape/portrait).
 - Tested e2e: 25/25 backend, 100% frontend.
 
+### Iteration 3 (2026-06-26)
+- Code-quality fixes (serve_file unbound-var, useCallback hook deps, lint cleanups). Verified 27/27 backend.
+- Orphaned-object cleanup: rotate/crop/page-delete now record replaced storage paths in an `orphaned_objects` ledger; `GET /api/admin/orphans` (status) and `POST /api/admin/orphans/purge` (best-effort delete). NOTE: storage backend returns 405 on DELETE today, so purge is a no-op that will free storage automatically once deletion is supported.
+
 ## Backlog
 - P1: Public shareable read-only links (currently private only by design).
 - P2: Page rotation/cropping, double-page spread layout, book cover customization.

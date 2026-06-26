@@ -82,6 +82,19 @@ def get_object(path: str):
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 
+def try_delete_object(path: str) -> bool:
+    """Best-effort delete of a storage object. Returns True if it is gone.
+    The storage backend currently has no DELETE API (405); this becomes a
+    real purge automatically if/when deletion is supported."""
+    try:
+        key = init_storage()
+        resp = requests.delete(f"{STORAGE_URL}/objects/{path}",
+                               headers={"X-Storage-Key": key}, timeout=30)
+        return resp.status_code in (200, 202, 204, 404)
+    except Exception:
+        return False
+
+
 # ---------------- Models ----------------
 class Page(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -137,6 +150,22 @@ def book_public(doc: dict) -> dict:
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
     }
+
+
+async def record_orphans(paths):
+    """Track storage objects no longer referenced so they can be purged later."""
+    paths = [p for p in (paths if isinstance(paths, (list, tuple, set)) else [paths]) if p]
+    if not paths:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    await db.orphaned_objects.insert_many(
+        [{"storage_path": p, "purged": False, "created_at": now} for p in paths])
+    # best-effort immediate purge (no-op until storage supports DELETE)
+    for p in paths:
+        if try_delete_object(p):
+            await db.orphaned_objects.update_one(
+                {"storage_path": p, "purged": False},
+                {"$set": {"purged": True, "purged_at": now}})
 
 
 async def store_uploaded_file(book_id: str, file: UploadFile) -> List[Page]:
@@ -248,6 +277,7 @@ async def delete_page(book_id: str, page_id: str):
     doc = await db.books.find_one({"id": book_id, "is_deleted": False}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Book not found")
+    removed = next((p for p in doc.get("pages", []) if p["id"] == page_id), None)
     pages = [p for p in doc.get("pages", []) if p["id"] != page_id]
     pages = sorted(pages, key=lambda p: p["order"])
     for i, p in enumerate(pages):
@@ -256,6 +286,8 @@ async def delete_page(book_id: str, page_id: str):
     await db.books.update_one({"id": book_id}, {"$set": {
         "pages": pages, "cover_path": cover,
         "updated_at": datetime.now(timezone.utc).isoformat()}})
+    if removed:
+        await record_orphans(removed["storage_path"])
     new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
     return book_public(new_doc)
 
@@ -374,7 +406,7 @@ def _reprocess_page(book: dict, page_id: str, transform) -> dict:
     update = {"pages": pages, "updated_at": datetime.now(timezone.utc).isoformat()}
     if book.get("cover_path") == old_path:
         update["cover_path"] = result["path"]
-    return update
+    return update, old_path
 
 
 @api_router.post("/books/{book_id}/pages/{page_id}/rotate")
@@ -383,8 +415,9 @@ async def rotate_page(book_id: str, page_id: str, payload: RotateRequest):
     if not doc:
         raise HTTPException(status_code=404, detail="Book not found")
     deg = payload.degrees % 360
-    update = _reprocess_page(doc, page_id, lambda im: im.rotate(-deg, expand=True))
+    update, old_path = _reprocess_page(doc, page_id, lambda im: im.rotate(-deg, expand=True))
     await db.books.update_one({"id": book_id}, {"$set": update})
+    await record_orphans(old_path)
     new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
     return book_public(new_doc)
 
@@ -405,10 +438,33 @@ async def crop_page(book_id: str, page_id: str, payload: CropRequest):
             raise HTTPException(status_code=400, detail="Invalid crop region")
         return im.crop((left, top, right, bottom))
 
-    update = _reprocess_page(doc, page_id, _crop)
+    update, old_path = _reprocess_page(doc, page_id, _crop)
     await db.books.update_one({"id": book_id}, {"$set": update})
+    await record_orphans(old_path)
     new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
     return book_public(new_doc)
+
+
+# ---------- Orphaned object cleanup ----------
+@api_router.get("/admin/orphans")
+async def orphan_status():
+    pending = await db.orphaned_objects.count_documents({"purged": False})
+    purged = await db.orphaned_objects.count_documents({"purged": True})
+    return {"pending": pending, "purged": purged}
+
+
+@api_router.post("/admin/orphans/purge")
+async def purge_orphans():
+    docs = await db.orphaned_objects.find({"purged": False}).to_list(1000)
+    purged = 0
+    for d in docs:
+        if try_delete_object(d["storage_path"]):
+            await db.orphaned_objects.update_one(
+                {"_id": d["_id"]},
+                {"$set": {"purged": True,
+                          "purged_at": datetime.now(timezone.utc).isoformat()}})
+            purged += 1
+    return {"checked": len(docs), "purged": purged, "remaining": len(docs) - purged}
 
 
 app.include_router(api_router)
