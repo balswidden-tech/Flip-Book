@@ -13,6 +13,7 @@ import {
   Check,
   Link2Off,
   QrCode,
+  Download,
 } from "lucide-react";
 import {
   DndContext,
@@ -29,7 +30,7 @@ import {
 import { Header } from "@/components/Header";
 import { CropDialog } from "@/components/CropDialog";
 import { SortablePage } from "@/components/SortablePage";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import {
   Dialog,
   DialogContent,
@@ -71,6 +72,7 @@ export default function BookEditor() {
   const [copied, setCopied] = useState(false);
   const fileRef = useRef(null);
   const coverRef = useRef(null);
+  const qrCanvasRef = useRef(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -213,6 +215,23 @@ export default function BookEditor() {
     } catch (e) {
       toast.error("Copy failed");
     }
+  };
+
+  const handleDownloadQR = () => {
+    const canvas = qrCanvasRef.current;
+    if (!canvas) return;
+    const url = canvas.toDataURL("image/png");
+    const safeTitle = (book?.title || "flipbook")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeTitle || "flipbook"}-qr.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("QR code downloaded");
   };
 
   if (loading) {
@@ -453,10 +472,29 @@ export default function BookEditor() {
                       bgColor="#FFFFFF"
                     />
                   </div>
+                  <button
+                    data-testid="download-qr-button"
+                    onClick={handleDownloadQR}
+                    className="label-overline text-[#0F0F0F] inline-flex items-center gap-2 border-b border-transparent hover:border-[#0F0F0F] transition-colors pb-0.5"
+                  >
+                    <Download strokeWidth={1.5} className="w-4 h-4" />
+                    Download QR
+                  </button>
                   <p className="label-overline text-[#8A867D] flex items-center gap-2">
                     <QrCode strokeWidth={1.5} className="w-4 h-4" />
                     Scan to open on a phone
                   </p>
+                  {/* hidden high-res canvas used only for PNG export */}
+                  <QRCodeCanvas
+                    ref={qrCanvasRef}
+                    value={shareUrl}
+                    size={512}
+                    level="M"
+                    marginSize={4}
+                    fgColor="#0F0F0F"
+                    bgColor="#FFFFFF"
+                    style={{ display: "none" }}
+                  />
                 </div>
               </>
             )}
