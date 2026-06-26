@@ -12,6 +12,7 @@ import {
   Copy,
   Check,
   Link2Off,
+  QrCode,
 } from "lucide-react";
 import {
   DndContext,
@@ -28,6 +29,7 @@ import {
 import { Header } from "@/components/Header";
 import { CropDialog } from "@/components/CropDialog";
 import { SortablePage } from "@/components/SortablePage";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Dialog,
   DialogContent,
@@ -417,26 +419,46 @@ export default function BookEditor() {
               />
             </div>
             {book?.share_enabled && shareUrl && (
-              <div className="flex items-stretch border border-[#0F0F0F]">
-                <input
-                  data-testid="share-link-input"
-                  readOnly
-                  value={shareUrl}
-                  className="flex-1 bg-transparent px-3 py-2 text-sm outline-none truncate"
-                />
-                <button
-                  data-testid="copy-share-link"
-                  onClick={handleCopy}
-                  className="px-4 bg-[#0F0F0F] text-[#FAF9F6] hover:bg-[#C34A36] transition-colors inline-flex items-center gap-2 text-sm"
-                >
-                  {copied ? (
-                    <Check strokeWidth={2} className="w-4 h-4" />
-                  ) : (
-                    <Copy strokeWidth={1.5} className="w-4 h-4" />
-                  )}
-                  {copied ? "Copied" : "Copy"}
-                </button>
-              </div>
+              <>
+                <div className="flex items-stretch border border-[#0F0F0F]">
+                  <input
+                    data-testid="share-link-input"
+                    readOnly
+                    value={shareUrl}
+                    className="flex-1 bg-transparent px-3 py-2 text-sm outline-none truncate"
+                  />
+                  <button
+                    data-testid="copy-share-link"
+                    onClick={handleCopy}
+                    className="px-4 bg-[#0F0F0F] text-[#FAF9F6] hover:bg-[#C34A36] transition-colors inline-flex items-center gap-2 text-sm"
+                  >
+                    {copied ? (
+                      <Check strokeWidth={2} className="w-4 h-4" />
+                    ) : (
+                      <Copy strokeWidth={1.5} className="w-4 h-4" />
+                    )}
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="flex flex-col items-center gap-3 pt-2">
+                  <div
+                    data-testid="share-qr-code"
+                    className="bg-white p-4 border border-[#D1CEC7]"
+                  >
+                    <QRCodeSVG
+                      value={shareUrl}
+                      size={160}
+                      level="M"
+                      fgColor="#0F0F0F"
+                      bgColor="#FFFFFF"
+                    />
+                  </div>
+                  <p className="label-overline text-[#8A867D] flex items-center gap-2">
+                    <QrCode strokeWidth={1.5} className="w-4 h-4" />
+                    Scan to open on a phone
+                  </p>
+                </div>
+              </>
             )}
             {!book?.share_enabled && (
               <p className="text-xs text-[#8A867D] flex items-center gap-2">
