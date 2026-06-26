@@ -26,6 +26,12 @@ An app to turn a collection of documents or images into a flip book.
 - Reader: react-pageflip portrait viewer, page indicator, prev/next controls.
 - Backend CRUD + object storage + PDF rendering. Tested e2e (15/15 backend, all frontend flows pass).
 
+### Iteration 2 (2026-06-26)
+- P1 Public shareable read-only links: share toggle + copyable `/s/:shareId` URL, read-only SharedReader page. Backend share_id + share_enabled.
+- P2 Custom covers (upload image or set any page as cover, COVER badge), double-page spread toggle in reader, page rotate 90° and crop (react-image-crop) — processed server-side via Pillow.
+- Auto-adjust flipbook page size/orientation: pages store width/height; reader frame matches content aspect ratio (landscape/portrait).
+- Tested e2e: 25/25 backend, 100% frontend.
+
 ## Backlog
 - P1: Public shareable read-only links (currently private only by design).
 - P2: Page rotation/cropping, double-page spread layout, book cover customization.

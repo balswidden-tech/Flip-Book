@@ -60,7 +60,7 @@ export function FlipViewer({ pages, onPageChange }) {
   return (
     <div className="flex-1 flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-6 overflow-hidden">
-        <div className="flip-shadow">
+        <div className="flip-shadow" data-testid="flipbook">
           <HTMLFlipBook
             key={`${dims.w}x${dims.h}-${dims.isSpread ? "s" : "p"}`}
             ref={flipRef}
