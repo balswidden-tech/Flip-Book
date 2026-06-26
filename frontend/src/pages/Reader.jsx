@@ -1,37 +1,15 @@
-import { useEffect, useRef, useState, forwardRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import HTMLFlipBook from "react-pageflip";
 import { toast } from "sonner";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { getBook, fileUrl } from "@/lib/flipApi";
-
-const Page = forwardRef(({ src, label }, ref) => (
-  <div ref={ref} className="book-page" data-density="hard">
-    <div className="book-page-content relative bg-[#FAF9F6]">
-      {src ? (
-        <img
-          src={src}
-          alt={label}
-          className="w-full h-full object-contain bg-white"
-          draggable={false}
-        />
-      ) : (
-        <span className="font-serif-display text-3xl text-[#8A867D]">{label}</span>
-      )}
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-black/12 to-transparent" />
-    </div>
-  </div>
-));
-Page.displayName = "Page";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { getBook } from "@/lib/flipApi";
+import { FlipViewer } from "@/components/FlipViewer";
 
 export default function Reader() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [book, setBook] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [current, setCurrent] = useState(0);
-  const flipRef = useRef(null);
-  const [dims, setDims] = useState({ w: 420, h: 560 });
 
   useEffect(() => {
     getBook(id)
@@ -50,18 +28,6 @@ export default function Reader() {
       .finally(() => setLoading(false));
   }, [id, navigate]);
 
-  useEffect(() => {
-    const calc = () => {
-      const availH = Math.min(window.innerHeight - 220, 720);
-      const h = Math.max(380, availH);
-      const w = Math.round(h * 0.72);
-      setDims({ w, h });
-    };
-    calc();
-    window.addEventListener("resize", calc);
-    return () => window.removeEventListener("resize", calc);
-  }, []);
-
   if (loading || !book) {
     return (
       <div className="min-h-screen flex items-center justify-center relative z-10">
@@ -70,11 +36,8 @@ export default function Reader() {
     );
   }
 
-  const total = book.pages.length;
-
   return (
     <div className="min-h-screen flex flex-col relative z-10 bg-[#23211D]">
-      {/* top bar */}
       <div className="flex items-center justify-between px-6 md:px-12 h-16 border-b border-white/10">
         <button
           data-testid="reader-back-button"
@@ -86,63 +49,9 @@ export default function Reader() {
         <h1 className="font-serif-display text-2xl md:text-3xl tracking-tight text-[#FAF9F6] truncate max-w-[60%]">
           {book.title}
         </h1>
-        <span className="label-overline text-white/60" data-testid="page-indicator">
-          {Math.min(current + 1, total)} / {total}
-        </span>
+        <span className="w-12" />
       </div>
-
-      {/* book stage */}
-      <div className="flex-1 flex items-center justify-center px-4 py-8 overflow-hidden">
-        <div className="flip-shadow">
-          <HTMLFlipBook
-            key={`${dims.w}x${dims.h}`}
-            ref={flipRef}
-            width={dims.w}
-            height={dims.h}
-            size="fixed"
-            minWidth={300}
-            maxWidth={700}
-            minHeight={400}
-            maxHeight={900}
-            maxShadowOpacity={0.5}
-            drawShadow={true}
-            showCover={true}
-            usePortrait={true}
-            mobileScrollSupport={true}
-            flippingTime={700}
-            className="folio-flipbook"
-            onFlip={(e) => setCurrent(e.data)}
-            data-testid="flipbook"
-          >
-            {book.pages.map((p, i) => (
-              <Page
-                key={p.id}
-                src={fileUrl(p.storage_path)}
-                label={`Page ${i + 1}`}
-              />
-            ))}
-          </HTMLFlipBook>
-        </div>
-      </div>
-
-      {/* controls */}
-      <div className="flex items-center justify-center gap-6 pb-10">
-        <button
-          data-testid="prev-page-button"
-          onClick={() => flipRef.current?.pageFlip()?.flipPrev()}
-          className="w-12 h-12 flex items-center justify-center border border-white/25 text-white hover:bg-[#C34A36] hover:border-[#C34A36] transition-colors"
-        >
-          <ChevronLeft strokeWidth={1.5} className="w-5 h-5" />
-        </button>
-        <span className="label-overline text-white/50">Turn the page</span>
-        <button
-          data-testid="next-page-button"
-          onClick={() => flipRef.current?.pageFlip()?.flipNext()}
-          className="w-12 h-12 flex items-center justify-center border border-white/25 text-white hover:bg-[#C34A36] hover:border-[#C34A36] transition-colors"
-        >
-          <ChevronRight strokeWidth={1.5} className="w-5 h-5" />
-        </button>
-      </div>
+      <FlipViewer pages={book.pages} />
     </div>
   );
 }

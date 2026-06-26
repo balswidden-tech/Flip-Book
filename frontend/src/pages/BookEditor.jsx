@@ -9,6 +9,15 @@ import {
   GripVertical,
   Loader2,
   Pencil,
+  MoreVertical,
+  RotateCw,
+  Crop,
+  Star,
+  Share2,
+  ImagePlus,
+  Copy,
+  Check,
+  Link2Off,
 } from "lucide-react";
 import {
   DndContext,
@@ -25,6 +34,21 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Header } from "@/components/Header";
+import { CropDialog } from "@/components/CropDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   getBook,
   uploadPages,
@@ -32,6 +56,12 @@ import {
   deletePage,
   renameBook,
   fileUrl,
+  setCoverFromPage,
+  uploadCover,
+  rotatePage,
+  cropPage,
+  enableShare,
+  disableShare,
 } from "@/lib/flipApi";
 
 const btnPrimary =
@@ -39,7 +69,7 @@ const btnPrimary =
 const btnSecondary =
   "bg-transparent border border-[#0F0F0F] text-[#0F0F0F] px-6 py-3 font-sans text-sm tracking-wide hover:bg-[#E8E4DA] transition-colors duration-300 inline-flex items-center gap-2";
 
-function SortablePage({ page, index, onDelete }) {
+function SortablePage({ page, index, isCover, onSetCover, onRotate, onCrop, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id });
   const style = {
@@ -63,6 +93,14 @@ function SortablePage({ page, index, onDelete }) {
           loading="lazy"
         />
       </div>
+      {isCover && (
+        <span
+          data-testid={`cover-badge-${page.id}`}
+          className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 bg-[#C34A36] text-white px-2 py-0.5 label-overline"
+        >
+          <Star strokeWidth={2} className="w-3 h-3 fill-white" /> Cover
+        </span>
+      )}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-2 py-1.5 bg-[#0F0F0F]/85 text-[#FAF9F6]">
         <span className="label-overline">{index + 1}</span>
         <div className="flex items-center gap-1">
@@ -74,13 +112,49 @@ function SortablePage({ page, index, onDelete }) {
           >
             <GripVertical strokeWidth={1.5} className="w-4 h-4" />
           </button>
-          <button
-            data-testid={`delete-page-${page.id}`}
-            onClick={() => onDelete(page.id)}
-            className="p-1 hover:text-[#C34A36]"
-          >
-            <Trash2 strokeWidth={1.5} className="w-4 h-4" />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                data-testid={`page-menu-${page.id}`}
+                className="p-1 hover:text-[#C34A36] outline-none"
+              >
+                <MoreVertical strokeWidth={1.5} className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="rounded-none border-[#D1CEC7] bg-[#FAF9F6]"
+            >
+              <DropdownMenuItem
+                data-testid={`set-cover-${page.id}`}
+                onClick={() => onSetCover(page.id)}
+                className="rounded-none cursor-pointer"
+              >
+                <Star strokeWidth={1.5} className="w-4 h-4 mr-2" /> Set as cover
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid={`rotate-page-${page.id}`}
+                onClick={() => onRotate(page.id)}
+                className="rounded-none cursor-pointer"
+              >
+                <RotateCw strokeWidth={1.5} className="w-4 h-4 mr-2" /> Rotate 90°
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid={`crop-page-${page.id}`}
+                onClick={() => onCrop(page)}
+                className="rounded-none cursor-pointer"
+              >
+                <Crop strokeWidth={1.5} className="w-4 h-4 mr-2" /> Crop
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid={`delete-page-${page.id}`}
+                onClick={() => onDelete(page.id)}
+                className="rounded-none cursor-pointer text-[#C34A36] focus:text-[#C34A36]"
+              >
+                <Trash2 strokeWidth={1.5} className="w-4 h-4 mr-2" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
@@ -96,7 +170,11 @@ export default function BookEditor() {
   const [progress, setProgress] = useState(0);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [cropTarget, setCropTarget] = useState(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef(null);
+  const coverRef = useRef(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
@@ -175,6 +253,73 @@ export default function BookEditor() {
     }
   };
 
+  const handleSetCover = async (pageId) => {
+    try {
+      setBook(await setCoverFromPage(id, pageId));
+      toast.success("Cover updated");
+    } catch (e) {
+      toast.error("Could not set cover");
+    }
+  };
+
+  const handleCoverUpload = async (file) => {
+    if (!file) return;
+    try {
+      setBook(await uploadCover(id, file));
+      toast.success("Custom cover set");
+    } catch (e) {
+      toast.error("Cover upload failed");
+    } finally {
+      if (coverRef.current) coverRef.current.value = "";
+    }
+  };
+
+  const handleRotate = async (pageId) => {
+    try {
+      setBook(await rotatePage(id, pageId, 90));
+    } catch (e) {
+      toast.error("Rotate failed");
+    }
+  };
+
+  const handleCropConfirm = async (rect) => {
+    try {
+      setBook(await cropPage(id, cropTarget.id, rect));
+      toast.success("Page cropped");
+      setCropTarget(null);
+    } catch (e) {
+      toast.error("Crop failed");
+    }
+  };
+
+  const handleShareToggle = async (on) => {
+    try {
+      if (on) {
+        const res = await enableShare(id);
+        setBook((b) => ({ ...b, share_enabled: true, share_id: res.share_id }));
+      } else {
+        await disableShare(id);
+        setBook((b) => ({ ...b, share_enabled: false }));
+      }
+    } catch (e) {
+      toast.error("Could not update sharing");
+    }
+  };
+
+  const shareUrl = book?.share_id
+    ? `${window.location.origin}/s/${book.share_id}`
+    : "";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) {
+      toast.error("Copy failed");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center relative z-10">
@@ -189,15 +334,26 @@ export default function BookEditor() {
     <div className="min-h-screen relative z-10">
       <Header
         right={
-          <button
-            data-testid="read-flipbook-button"
-            disabled={!hasPages}
-            onClick={() => navigate(`/book/${id}/read`)}
-            className={btnPrimary}
-          >
-            <BookOpenCheck strokeWidth={1.5} className="w-4 h-4" />
-            Read
-          </button>
+          <>
+            <button
+              data-testid="share-flipbook-button"
+              disabled={!hasPages}
+              onClick={() => setShareOpen(true)}
+              className={btnSecondary + " disabled:opacity-50"}
+            >
+              <Share2 strokeWidth={1.5} className="w-4 h-4" />
+              Share
+            </button>
+            <button
+              data-testid="read-flipbook-button"
+              disabled={!hasPages}
+              onClick={() => navigate(`/book/${id}/read`)}
+              className={btnPrimary}
+            >
+              <BookOpenCheck strokeWidth={1.5} className="w-4 h-4" />
+              Read
+            </button>
+          </>
         }
       />
 
@@ -242,6 +398,24 @@ export default function BookEditor() {
               {book.pages.length} {book.pages.length === 1 ? "Page" : "Pages"}
               {hasPages && " · Drag to reorder"}
             </p>
+          </div>
+          <div className="shrink-0">
+            <input
+              ref={coverRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              data-testid="cover-upload-input"
+              onChange={(e) => handleCoverUpload(e.target.files?.[0])}
+            />
+            <button
+              data-testid="custom-cover-button"
+              onClick={() => coverRef.current?.click()}
+              className={btnSecondary}
+            >
+              <ImagePlus strokeWidth={1.5} className="w-4 h-4" />
+              {book.custom_cover ? "Change cover" : "Custom cover"}
+            </button>
           </div>
         </div>
 
@@ -301,6 +475,10 @@ export default function BookEditor() {
                     key={p.id}
                     page={p}
                     index={i}
+                    isCover={!book.custom_cover && book.cover_path === p.storage_path}
+                    onSetCover={handleSetCover}
+                    onRotate={handleRotate}
+                    onCrop={setCropTarget}
                     onDelete={handleDeletePage}
                   />
                 ))}
@@ -313,6 +491,69 @@ export default function BookEditor() {
           </p>
         )}
       </div>
+
+      <CropDialog
+        open={!!cropTarget}
+        page={cropTarget}
+        onClose={() => setCropTarget(null)}
+        onConfirm={handleCropConfirm}
+      />
+
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="bg-[#FAF9F6] border border-[#D1CEC7] rounded-none sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif-display text-3xl tracking-tight text-left">
+              Share Flipbook
+            </DialogTitle>
+            <DialogDescription className="text-[#5C5A56]">
+              Anyone with the link can read this flipbook — they can't edit it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-6">
+            <div className="flex items-center justify-between border border-[#D1CEC7] px-4 py-3">
+              <div>
+                <p className="label-overline text-[#0F0F0F]">Public link</p>
+                <p className="text-sm text-[#8A867D] mt-0.5">
+                  {book?.share_enabled ? "Sharing is on" : "Sharing is off"}
+                </p>
+              </div>
+              <Switch
+                data-testid="share-toggle"
+                checked={!!book?.share_enabled}
+                onCheckedChange={handleShareToggle}
+              />
+            </div>
+            {book?.share_enabled && shareUrl && (
+              <div className="flex items-stretch border border-[#0F0F0F]">
+                <input
+                  data-testid="share-link-input"
+                  readOnly
+                  value={shareUrl}
+                  className="flex-1 bg-transparent px-3 py-2 text-sm outline-none truncate"
+                />
+                <button
+                  data-testid="copy-share-link"
+                  onClick={handleCopy}
+                  className="px-4 bg-[#0F0F0F] text-[#FAF9F6] hover:bg-[#C34A36] transition-colors inline-flex items-center gap-2 text-sm"
+                >
+                  {copied ? (
+                    <Check strokeWidth={2} className="w-4 h-4" />
+                  ) : (
+                    <Copy strokeWidth={1.5} className="w-4 h-4" />
+                  )}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
+            {!book?.share_enabled && (
+              <p className="text-xs text-[#8A867D] flex items-center gap-2">
+                <Link2Off strokeWidth={1.5} className="w-4 h-4" />
+                Turn on sharing to generate a link.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

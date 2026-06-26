@@ -29,3 +29,26 @@ export const reorderPages = (id, pageIds) =>
   api.put(`/books/${id}/reorder`, { page_ids: pageIds }).then((r) => r.data);
 export const deletePage = (id, pageId) =>
   api.delete(`/books/${id}/pages/${pageId}`).then((r) => r.data);
+
+export const getShared = (shareId) =>
+  api.get(`/share/${shareId}`).then((r) => r.data);
+export const enableShare = (id) =>
+  api.post(`/books/${id}/share`).then((r) => r.data);
+export const disableShare = (id) =>
+  api.delete(`/books/${id}/share`).then((r) => r.data);
+export const setCoverFromPage = (id, pageId) =>
+  api.post(`/books/${id}/cover/page/${pageId}`).then((r) => r.data);
+export const uploadCover = (id, file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api
+    .post(`/books/${id}/cover`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    .then((r) => r.data);
+};
+export const rotatePage = (id, pageId, degrees = 90) =>
+  api.post(`/books/${id}/pages/${pageId}/rotate`, { degrees }).then((r) => r.data);
+export const cropPage = (id, pageId, rect) =>
+  api.post(`/books/${id}/pages/${pageId}/crop`, rect).then((r) => r.data);
+

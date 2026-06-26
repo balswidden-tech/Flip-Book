@@ -10,8 +10,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
+import secrets
 import requests
 import fitz  # PyMuPDF
+from PIL import Image
 from datetime import datetime, timezone
 
 ROOT_DIR = Path(__file__).parent
@@ -86,6 +88,8 @@ class Page(BaseModel):
     storage_path: str
     content_type: str = "image/png"
     source_filename: Optional[str] = None
+    width: int = 0
+    height: int = 0
     order: int = 0
 
 
@@ -94,6 +98,9 @@ class Book(BaseModel):
     title: str
     pages: List[Page] = []
     cover_path: Optional[str] = None
+    custom_cover: bool = False
+    share_enabled: bool = False
+    share_id: Optional[str] = None
     is_deleted: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -105,6 +112,17 @@ class BookCreate(BaseModel):
 
 class ReorderRequest(BaseModel):
     page_ids: List[str]
+
+
+class CropRequest(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class RotateRequest(BaseModel):
+    degrees: int = 90
 
 
 # ---------------- Helpers ----------------
@@ -135,13 +153,20 @@ async def store_uploaded_file(book_id: str, file: UploadFile) -> List[Page]:
             path = f"{APP_NAME}/uploads/{book_id}/{uuid.uuid4()}.png"
             result = put_object(path, img_bytes, "image/png")
             new_pages.append(Page(storage_path=result["path"], content_type="image/png",
-                                  source_filename=file.filename))
+                                  source_filename=file.filename,
+                                  width=pix.width, height=pix.height))
         pdf.close()
     elif ext in MIME_TYPES:
         ct = MIME_TYPES[ext]
+        try:
+            with Image.open(io.BytesIO(data)) as im:
+                iw, ih = im.size
+        except Exception:
+            iw, ih = 0, 0
         path = f"{APP_NAME}/uploads/{book_id}/{uuid.uuid4()}.{ext}"
         result = put_object(path, data, ct)
-        new_pages.append(Page(storage_path=result["path"], content_type=ct, source_filename=file.filename))
+        new_pages.append(Page(storage_path=result["path"], content_type=ct,
+                              source_filename=file.filename, width=iw, height=ih))
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
     return new_pages
@@ -262,6 +287,128 @@ async def serve_file(path: str):
         raise HTTPException(status_code=404, detail="File not found")
     return Response(content=data, media_type=content_type,
                     headers={"Cache-Control": "public, max-age=31536000"})
+
+
+# ---------- Sharing ----------
+@api_router.post("/books/{book_id}/share")
+async def enable_share(book_id: str):
+    doc = await db.books.find_one({"id": book_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Book not found")
+    share_id = doc.get("share_id") or secrets.token_urlsafe(9)
+    await db.books.update_one({"id": book_id}, {"$set": {
+        "share_enabled": True, "share_id": share_id,
+        "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"share_enabled": True, "share_id": share_id}
+
+
+@api_router.delete("/books/{book_id}/share")
+async def disable_share(book_id: str):
+    res = await db.books.update_one({"id": book_id, "is_deleted": False},
+                                    {"$set": {"share_enabled": False}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return {"share_enabled": False}
+
+
+@api_router.get("/share/{share_id}")
+async def get_shared_book(share_id: str):
+    doc = await db.books.find_one(
+        {"share_id": share_id, "share_enabled": True, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="This flipbook is not available")
+    return book_public(doc)
+
+
+# ---------- Cover ----------
+@api_router.post("/books/{book_id}/cover/page/{page_id}")
+async def set_cover_from_page(book_id: str, page_id: str):
+    doc = await db.books.find_one({"id": book_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Book not found")
+    page = next((p for p in doc.get("pages", []) if p["id"] == page_id), None)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    await db.books.update_one({"id": book_id}, {"$set": {
+        "cover_path": page["storage_path"], "custom_cover": False,
+        "updated_at": datetime.now(timezone.utc).isoformat()}})
+    new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
+    return book_public(new_doc)
+
+
+@api_router.post("/books/{book_id}/cover")
+async def upload_cover(book_id: str, file: UploadFile = File(...)):
+    doc = await db.books.find_one({"id": book_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Book not found")
+    ext = (file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png").lower()
+    if ext not in {"jpg", "jpeg", "png", "gif", "webp"}:
+        raise HTTPException(status_code=400, detail="Cover must be an image")
+    data = await file.read()
+    path = f"{APP_NAME}/uploads/{book_id}/cover-{uuid.uuid4()}.{ext}"
+    result = put_object(path, data, MIME_TYPES.get(ext, "image/png"))
+    await db.books.update_one({"id": book_id}, {"$set": {
+        "cover_path": result["path"], "custom_cover": True,
+        "updated_at": datetime.now(timezone.utc).isoformat()}})
+    new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
+    return book_public(new_doc)
+
+
+# ---------- Page transforms (rotate / crop) ----------
+def _reprocess_page(book: dict, page_id: str, transform) -> dict:
+    pages = book.get("pages", [])
+    page = next((p for p in pages if p["id"] == page_id), None)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    old_path = page["storage_path"]
+    raw, _ = get_object(old_path)
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+    img = transform(img)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    new_path = f"{APP_NAME}/uploads/{book['id']}/{uuid.uuid4()}.png"
+    result = put_object(new_path, buf.getvalue(), "image/png")
+    page["storage_path"] = result["path"]
+    page["content_type"] = "image/png"
+    page["width"], page["height"] = img.size
+    update = {"pages": pages, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if book.get("cover_path") == old_path:
+        update["cover_path"] = result["path"]
+    return update
+
+
+@api_router.post("/books/{book_id}/pages/{page_id}/rotate")
+async def rotate_page(book_id: str, page_id: str, payload: RotateRequest):
+    doc = await db.books.find_one({"id": book_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Book not found")
+    deg = payload.degrees % 360
+    update = _reprocess_page(doc, page_id, lambda im: im.rotate(-deg, expand=True))
+    await db.books.update_one({"id": book_id}, {"$set": update})
+    new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
+    return book_public(new_doc)
+
+
+@api_router.post("/books/{book_id}/pages/{page_id}/crop")
+async def crop_page(book_id: str, page_id: str, payload: CropRequest):
+    doc = await db.books.find_one({"id": book_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    def _crop(im):
+        w, h = im.size
+        left = max(0, int(payload.x * w))
+        top = max(0, int(payload.y * h))
+        right = min(w, int((payload.x + payload.width) * w))
+        bottom = min(h, int((payload.y + payload.height) * h))
+        if right <= left or bottom <= top:
+            raise HTTPException(status_code=400, detail="Invalid crop region")
+        return im.crop((left, top, right, bottom))
+
+    update = _reprocess_page(doc, page_id, _crop)
+    await db.books.update_one({"id": book_id}, {"$set": update})
+    new_doc = await db.books.find_one({"id": book_id}, {"_id": 0})
+    return book_public(new_doc)
 
 
 app.include_router(api_router)

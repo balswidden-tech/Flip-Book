@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import Library from "@/pages/Library";
 import BookEditor from "@/pages/BookEditor";
 import Reader from "@/pages/Reader";
+import SharedReader from "@/pages/SharedReader";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<Library />} />
           <Route path="/book/:id" element={<BookEditor />} />
           <Route path="/book/:id/read" element={<Reader />} />
+          <Route path="/s/:shareId" element={<SharedReader />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-center" />
