@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Plus, BookOpen, Trash2, FileText, MoreHorizontal } from "lucide-react";
+import { Plus, BookOpen, Trash2, FileText } from "lucide-react";
 import { Header } from "@/components/Header";
 import {
   listBooks,
@@ -88,7 +88,7 @@ export default function Library() {
   const [toDelete, setToDelete] = useState(null);
   const navigate = useNavigate();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setBooks(await listBooks());
     } catch (e) {
@@ -96,11 +96,11 @@ export default function Library() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const handleCreate = async () => {
     if (!title.trim()) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -179,7 +179,7 @@ export default function BookEditor() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const b = await getBook(id);
       setBook(b);
@@ -190,12 +190,11 @@ export default function BookEditor() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, navigate]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line
-  }, [id]);
+  }, [load]);
 
   const handleFiles = async (files) => {
     if (!files || !files.length) return;

@@ -201,7 +201,7 @@ def test_delete_book_soft(session, created_book_ids):
 
     r = session.delete(f"{API}/books/{bid}", timeout=20)
     assert r.status_code == 200
-    assert r.json().get("success") is True
+    assert r.json().get("success") == True
 
     # Should not appear in list
     titles = [b["title"] for b in session.get(f"{API}/books", timeout=20).json()]

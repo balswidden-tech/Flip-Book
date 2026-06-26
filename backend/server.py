@@ -283,10 +283,10 @@ async def delete_book(book_id: str):
 async def serve_file(path: str):
     try:
         data, content_type = get_object(path)
+        return Response(content=data, media_type=content_type,
+                        headers={"Cache-Control": "public, max-age=31536000"})
     except requests.HTTPError:
         raise HTTPException(status_code=404, detail="File not found")
-    return Response(content=data, media_type=content_type,
-                    headers={"Cache-Control": "public, max-age=31536000"})
 
 
 # ---------- Sharing ----------

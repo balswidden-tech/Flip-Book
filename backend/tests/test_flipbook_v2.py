@@ -49,7 +49,7 @@ def test_share_lifecycle(book_with_pages):
     r = requests.post(f"{API}/books/{bid}/share", timeout=20)
     assert r.status_code == 200
     data = r.json()
-    assert data["share_enabled"] is True
+    assert data["share_enabled"] == True
     sid = data["share_id"]
     assert isinstance(sid, str) and len(sid) > 5
 
@@ -63,7 +63,7 @@ def test_share_lifecycle(book_with_pages):
     # Disable
     r = requests.delete(f"{API}/books/{bid}/share", timeout=20)
     assert r.status_code == 200
-    assert r.json()["share_enabled"] is False
+    assert r.json()["share_enabled"] == False
 
     # 404 after disable
     r = requests.get(f"{API}/share/{sid}", timeout=20)
