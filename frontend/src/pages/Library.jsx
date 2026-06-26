@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -230,6 +231,9 @@ export default function Library() {
             <DialogTitle className="font-serif-display text-3xl tracking-tight text-left">
               New Flipbook
             </DialogTitle>
+            <DialogDescription className="text-[#5C5A56] text-left">
+              Name your flipbook and optionally add images or PDFs to start.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-2">
             <div>
