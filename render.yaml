@@ -33,4 +33,7 @@ services:
         destination: /index.html
     envVars:
       - key: REACT_APP_BACKEND_URL
-        sync: false
+        fromService:
+          type: web
+          name: flip-the-pages-api
+          property: host
