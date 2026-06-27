@@ -1,0 +1,36 @@
+services:
+  # The Python Backend
+  - type: web
+    name: flip-the-pages-api
+    env: python
+    region: singapore
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: flipbook
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: flipbook
+      - key: CORS_ORIGINS
+        value: "*"
+
+  # The React Frontend
+  - type: web
+    name: flip-the-pages-ui
+    env: static
+    region: singapore
+    buildCommand: cd frontend && npm install --legacy-peer-deps && npm run build
+    publishPath: frontend/build
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        sync: false
